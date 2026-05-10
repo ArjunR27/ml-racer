@@ -137,7 +137,7 @@ class DQNAgent(BaseAgent):
         gamma: float         = 0.99,
         epsilon_start: float = 1.0,
         epsilon_min: float   = 0.05,
-        epsilon_decay: float = 0.995,
+        epsilon_decay: float = 0.9999,
         buffer_size: int     = 50_000,
         batch_size: int      = 32,
         update_every: int    = 4,
@@ -187,15 +187,14 @@ class DQNAgent(BaseAgent):
         self.buffer.push(obs, action, reward, next_obs, done)
         self.step_count += 1
 
-        # Decay exploration rate every step
-        self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
-
         # Wait until the buffer has enough transitions
         if len(self.buffer) < self.min_buffer:
             return {}
         # Only update every N steps
         if self.step_count % self.update_every != 0:
             return {}
+        
+        self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
 
         loss = self._learn()
 
