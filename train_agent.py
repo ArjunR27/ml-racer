@@ -55,6 +55,8 @@ def train(env_cfg: EnvConfig, train_cfg: TrainConfig) -> None:
         episode_steps = 0
         episode_metrics: dict[str, list] = {}
 
+        steps_without_progress = 0
+
         for _ in range(train_cfg.max_steps_per_episode):
             if clock is not None:
                 for event in pygame.event.get():
@@ -65,6 +67,15 @@ def train(env_cfg: EnvConfig, train_cfg: TrainConfig) -> None:
             action = agent.select_action(obs)
             next_obs, reward, terminated, truncated, _ = env.step(action)
             done = terminated or truncated
+
+            if reward > 0:
+                steps_without_progress = 0
+            else:
+                steps_without_progress += 1
+
+            # stop after a second of making no progress 
+            if steps_without_progress > 120:  # 2 second att 60fps
+                done = True
 
             metrics = agent.update(obs, action, reward, next_obs, done)
 
