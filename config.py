@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from agents.base_agent import BaseAgent
 from agents.random_agent import RandomAgent
+from agents.dqn_agent import DQNAgent
 
 
 @dataclass
@@ -30,16 +31,16 @@ env_cfg = EnvConfig(
     continuous = False,
     grayscale = False,
     frame_stack = 1,
-    resize = 84,
+    resize = 96,
     seed = -1,
 )
 
 train_cfg = TrainConfig(
-    agent = RandomAgent,
-    num_episodes = 5,
-    max_steps_per_episode = 200,
-    log_interval = 1,
-    save_interval = 5,
+    agent = DQNAgent,
+    num_episodes = 10000,
+    max_steps_per_episode = 500,
+    log_interval = 10,
+    save_interval = 100,
     checkpoint_dir = "checkpoints",
     render = True,
 )

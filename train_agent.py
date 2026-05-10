@@ -26,6 +26,14 @@ def train(env_cfg: EnvConfig, train_cfg: TrainConfig) -> None:
     env = make_env(env_cfg, render_mode=render_mode)
     agent = train_cfg.agent(env.observation_space, env.action_space)
 
+    checkpoint_path = f"checkpoints/{agent.name}_best.pt"
+
+    if os.path.exists(checkpoint_path):
+        agent.load(checkpoint_path)
+        print(f"Loaded checkpoint: {checkpoint_path}")
+    else:
+        print("No checkpoint found, starting fresh.")
+
     os.makedirs(train_cfg.checkpoint_dir, exist_ok=True)
 
     reward_window = deque(maxlen=train_cfg.log_interval)
@@ -93,12 +101,12 @@ def train(env_cfg: EnvConfig, train_cfg: TrainConfig) -> None:
 
             if avg_reward > best_avg_reward:
                 best_avg_reward = avg_reward
-                best_path = os.path.join(train_cfg.checkpoint_dir, "best.pt")
+                best_path = os.path.join(train_cfg.checkpoint_dir, f"{agent.name}_best.pt")
                 agent.save(best_path)
                 print(f"           ^ new best avg reward -- saved to {best_path}")
 
         if episode % train_cfg.save_interval == 0:
-            ckpt_path = os.path.join(train_cfg.checkpoint_dir, f"ep_{episode}.pt")
+            ckpt_path = os.path.join(train_cfg.checkpoint_dir, f"{agent.name}_ep_{episode}.pt")
             agent.save(ckpt_path)
 
     env.close()
