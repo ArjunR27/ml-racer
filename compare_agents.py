@@ -4,8 +4,8 @@ Each agent plays every episode on an identical track (fixed seed per episode)
 
 Usage:
     python compare_agents.py checkpoints/DQN_ep_100.pt checkpoints/DQN_ep_500.pt
-    python compare_agents.py checkpoints/DQN_best.pt checkpoints/DQN_ep_200.pt --episodes 20
-    python compare_agents.py checkpoints/*.pt --no-render --episodes 50
+    python compare_agents.py checkpoints/*.pt --episodes 20 --no-render
+    python compare_agents.py checkpoints/*.pt --seed 42 
 """
 
 import argparse
@@ -67,10 +67,14 @@ def run_agent(checkpoint_path: str, seeds: list[int], render: bool) -> list[floa
     return rewards
 
 
-def compare(checkpoints: list[str], num_episodes: int, render: bool) -> None:
-    # Generate one fixed set of seeds shared by all agents
-    rng = np.random.default_rng(seed=0)
-    seeds = rng.integers(0, 100_000, size=num_episodes).tolist()
+def compare(checkpoints: list[str], num_episodes: int, render: bool, seed: int | None) -> None:
+    # Fixed seed mode: one episode on one track, no variance expected
+    if seed is not None:
+        seeds = [seed]
+        print(f"Fixed seed mode: all agents play seed {seed} once.")
+    else:
+        rng = np.random.default_rng(seed=0)
+        seeds = rng.integers(0, 100_000, size=num_episodes).tolist()
 
     all_results: dict[str, list[float]] = {}
 
@@ -87,22 +91,45 @@ def compare(checkpoints: list[str], num_episodes: int, render: bool) -> None:
         rewards = run_agent(path, seeds, render)
         all_results[label] = rewards
 
-    print_comparison(all_results)
+    if seed is not None:
+        _print_fixed_seed_comparison(all_results, seed)
+    else:
+        _print_comparison(all_results)
 
 
-def print_comparison(results: dict[str, list[float]]) -> None:
+def _print_fixed_seed_comparison(results: dict[str, list[float]], seed: int) -> None:
+    """Single-episode comparison — no stats, just ranked scores."""
     if not results:
         return
 
-    col = 28  # width for checkpoint name column
+    col = 28
+    print(f"\n{'='*50}")
+    print(f"  Fixed track (seed={seed})")
+    print(f"  {'Checkpoint':<{col}} {'Reward':>8}")
+    print(f"  {'-'*col} {'--------':>8}")
+
+    ranked = sorted(results.items(), key=lambda x: x[1][0], reverse=True)
+    for i, (label, rewards) in enumerate(ranked):
+        prefix = "* " if i == 0 else "  "
+        print(f"{prefix}{label:<{col}} {rewards[0]:>8.2f}")
+
+    print(f"{'='*50}")
+    print(f"  * = best reward on this track")
+
+
+def _print_comparison(results: dict[str, list[float]]) -> None:
+    """Multi-episode comparison with full stats."""
+    if not results:
+        return
+
+    col = 28
     print(f"\n{'='*65}")
     print(f"  {'Checkpoint':<{col}} {'Mean':>8}  {'Std':>7}  {'Min':>8}  {'Max':>8}")
     print(f"  {'-'*col} {'--------':>8}  {'-------':>7}  {'--------':>8}  {'--------':>8}")
 
-    # Sort by mean reward descending so the best agent is on top
     ranked = sorted(results.items(), key=lambda x: np.mean(x[1]), reverse=True)
     for i, (label, rewards) in enumerate(ranked):
-        prefix = "* " if i == 0 else "  "  # star for best
+        prefix = "* " if i == 0 else "  "
         print(
             f"{prefix}{label:<{col}} "
             f"{np.mean(rewards):>8.2f}  "
@@ -117,13 +144,15 @@ def print_comparison(results: dict[str, list[float]]) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Compare saved RL agents on identical tracks.")
-    parser.add_argument("checkpoints", nargs="+", help="Paths to checkpoint files")
-    parser.add_argument("--episodes",  type=int, default=10,  help="Episodes per agent (default: 10)")
-    parser.add_argument("--no-render", action="store_true",   help="Disable the pygame window")
+    parser.add_argument("checkpoints", nargs="+",  help="Paths to checkpoint files")
+    parser.add_argument("--episodes",  type=int,   default=10,   help="Episodes per agent, ignored if --seed is set (default: 10)")
+    parser.add_argument("--seed",      type=int,   default=None, help="Pin a single track seed — runs once per agent, no variance")
+    parser.add_argument("--no-render", action="store_true",      help="Disable the pygame window")
     args = parser.parse_args()
 
     compare(
         checkpoints=args.checkpoints,
         num_episodes=args.episodes,
         render=not args.no_render,
+        seed=args.seed,
     )
