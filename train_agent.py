@@ -50,7 +50,7 @@ def train(env_cfg: EnvConfig, train_cfg: TrainConfig) -> None:
     start_time = time.time()
 
     for episode in range(1, train_cfg.num_episodes + 1):
-        obs, _ = env.reset()
+        obs, _ = env.reset(seed=env_cfg.seed if env_cfg.seed != -1 else None)
         episode_reward = 0.0
         episode_steps = 0
         episode_metrics: dict[str, list] = {}
