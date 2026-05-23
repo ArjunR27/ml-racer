@@ -74,6 +74,8 @@ class QNetwork(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if self.needs_permute:
             x = x.permute(0, 3, 1, 2)  # (B, H, W, C) -> (B, C, H, W)
+        if x.dim() == 3:  # (B, H, W) -> (B, 1, H, W)
+            x = x.unsqueeze(1)
         return self.fc(self.conv(x))
 
 
