@@ -12,8 +12,18 @@ import argparse
 import os
 
 import numpy as np
+import torch
 
-from config import env_cfg, train_cfg
+from config import (
+    dqn_env_cfg,
+    dqn_train_cfg,
+    double_dqn_env_cfg,
+    double_dqn_train_cfg,
+    env_cfg,
+    ppo_env_cfg,
+    ppo_train_cfg,
+    train_cfg,
+)
 from env_setup import make_env
 
 try:
@@ -23,16 +33,67 @@ except ImportError:
     _PYGAME_AVAILABLE = False
 
 
+def _select_eval_action(agent, obs):
+    if hasattr(agent, "select_eval_action"):
+        return agent.select_eval_action(obs)
+
+    old_epsilon = getattr(agent, "epsilon", None)
+    if old_epsilon is not None:
+        agent.epsilon = 0.0
+
+    action = agent.select_action(obs)
+
+    if old_epsilon is not None:
+        agent.epsilon = old_epsilon
+
+    return action
+
+
+def _configs_for_checkpoint(checkpoint_path: str, agent_type: str):
+    if agent_type == "ppo":
+        return ppo_env_cfg, ppo_train_cfg
+    if agent_type == "double_dqn":
+        return double_dqn_env_cfg, double_dqn_train_cfg
+    if agent_type == "dqn":
+        return dqn_env_cfg, dqn_train_cfg
+
+    basename = os.path.basename(checkpoint_path).lower()
+
+    try:
+        ckpt = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
+    except Exception:
+        if basename.startswith("ppo"):
+            return ppo_env_cfg, ppo_train_cfg
+        if basename.startswith("doubledqn") or basename.startswith("double_dqn"):
+            return double_dqn_env_cfg, double_dqn_train_cfg
+        if basename.startswith("dqn"):
+            return dqn_env_cfg, dqn_train_cfg
+        return env_cfg, train_cfg
+
+    if ckpt.get("agent_name") == "DoubleDQN":
+        return double_dqn_env_cfg, double_dqn_train_cfg
+    if "ac" in ckpt:
+        return ppo_env_cfg, ppo_train_cfg
+    if basename.startswith("doubledqn") or basename.startswith("double_dqn"):
+        return double_dqn_env_cfg, double_dqn_train_cfg
+    if "q_net" in ckpt:
+        return dqn_env_cfg, dqn_train_cfg
+
+    return env_cfg, train_cfg
+
+
 def run_agent(checkpoint_path: str, seeds: list[int], render: bool) -> list[float]:
     """Load one agent and run it on each seed. Returns list of episode rewards."""
     if render and _PYGAME_AVAILABLE:
         pygame.init()
 
+    selected_env_cfg, selected_train_cfg = _configs_for_checkpoint(
+        checkpoint_path, agent_type="auto"
+    )
     render_mode = "human" if render else None
-    env = make_env(env_cfg, render_mode=render_mode)
-    agent = train_cfg.agent(env.observation_space, env.action_space)
+    env = make_env(selected_env_cfg, render_mode=render_mode)
+    agent = selected_train_cfg.agent(env.observation_space, env.action_space)
     agent.load(checkpoint_path)
-    agent.epsilon = 0.0  # greedy — no exploration during evaluation
 
     clock = pygame.time.Clock() if (render and _PYGAME_AVAILABLE) else None
 
@@ -49,7 +110,7 @@ def run_agent(checkpoint_path: str, seeds: list[int], render: bool) -> list[floa
                         env.close()
                         return rewards
 
-            action = agent.select_action(obs)
+            action = _select_eval_action(agent, obs)
             obs, reward, terminated, truncated, _ = env.step(action)
             episode_reward += reward
             steps += 1

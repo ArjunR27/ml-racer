@@ -14,6 +14,62 @@ except ImportError:
     _PYGAME_AVAILABLE = False
 
 
+def _select_eval_action(agent, obs):
+    if hasattr(agent, "select_eval_action"):
+        return agent.select_eval_action(obs)
+
+    old_epsilon = getattr(agent, "epsilon", None)
+    if old_epsilon is not None:
+        agent.epsilon = 0.0
+
+    action = agent.select_action(obs)
+
+    if old_epsilon is not None:
+        agent.epsilon = old_epsilon
+
+    return action
+
+
+def _render_evaluation(env_cfg: EnvConfig, train_cfg: TrainConfig, agent, episode: int) -> None:
+    if not _PYGAME_AVAILABLE:
+        print("Skipping render evaluation because pygame is not installed.")
+        return
+
+    pygame.init()
+    clock = pygame.time.Clock()
+    env = make_env(env_cfg, render_mode="human")
+
+    print(f"\n[render eval] episode {episode} -- watching current {agent.name} policy")
+
+    for eval_ep in range(1, train_cfg.render_eval_episodes + 1):
+        obs, _ = env.reset(seed=env_cfg.seed if env_cfg.seed != -1 else None)
+        episode_reward = 0.0
+        steps = 0
+
+        for _ in range(train_cfg.max_steps_per_episode):
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    env.close()
+                    return
+
+            action = _select_eval_action(agent, obs)
+            obs, reward, terminated, truncated, _ = env.step(action)
+            episode_reward += reward
+            steps += 1
+
+            clock.tick(60)
+
+            if terminated or truncated:
+                break
+
+        print(
+            f"[render eval] eval_ep {eval_ep} | "
+            f"steps {steps} | reward {episode_reward:.2f}"
+        )
+
+    env.close()
+
+
 def train(env_cfg: EnvConfig, train_cfg: TrainConfig) -> None:
     """Main training loop."""
 
@@ -119,6 +175,18 @@ def train(env_cfg: EnvConfig, train_cfg: TrainConfig) -> None:
         if episode % train_cfg.save_interval == 0:
             ckpt_path = os.path.join(train_cfg.checkpoint_dir, f"{agent.name}_ep_{episode}.pt")
             agent.save(ckpt_path)
+
+        if (
+            train_cfg.render_eval_interval > 0
+            and episode % train_cfg.render_eval_interval == 0
+        ):
+            _render_evaluation(env_cfg, train_cfg, agent, episode)
+
+    if (
+        train_cfg.render_eval_interval > 0
+        and train_cfg.num_episodes % train_cfg.render_eval_interval != 0
+    ):
+        _render_evaluation(env_cfg, train_cfg, agent, train_cfg.num_episodes)
 
     env.close()
     total_time = time.time() - start_time

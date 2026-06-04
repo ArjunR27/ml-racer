@@ -312,6 +312,17 @@ class PPOAgent(BaseAgent):
         else:
             return int(action.item())
 
+    def select_eval_action(self, obs: np.ndarray) -> np.ndarray | int:
+        """Choose the policy's most likely action without exploration."""
+        obs_t = torch.tensor(obs, dtype=torch.float32).unsqueeze(0).to(self.device)
+        with torch.no_grad():
+            dist, _ = self.ac(obs_t)
+
+        if self.continuous:
+            return dist.mean.squeeze(0).cpu().numpy()
+
+        return int(dist.logits.argmax(dim=-1).item())
+
     def update(self, obs, action, reward, next_obs, done) -> dict:
         self.buffer.push(
             obs, action, reward, done,
