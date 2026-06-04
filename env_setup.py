@@ -10,7 +10,11 @@ import sys
 from config import EnvConfig
 
 
-def make_env(cfg: EnvConfig, render_mode: str = None) -> gym.Env:
+def make_env(
+    cfg: EnvConfig,
+    render_mode: str = None,
+    max_episode_steps: int | None = None,
+) -> gym.Env:
     """Build the CarRacing environment from an EnvConfig.
 
     Designed to abstract env information from the agent so the env can
@@ -23,12 +27,15 @@ def make_env(cfg: EnvConfig, render_mode: str = None) -> gym.Env:
     Returns:
         A fully wrapped gymnasium.Env.
     """
-    env = gym.make(
-        "CarRacing-v3",
-        continuous=cfg.continuous,
-        domain_randomize=False,
-        render_mode=render_mode,
-    )
+    make_kwargs = {
+        "continuous": cfg.continuous,
+        "domain_randomize": False,
+        "render_mode": render_mode,
+    }
+    if max_episode_steps is not None:
+        make_kwargs["max_episode_steps"] = max_episode_steps
+
+    env = gym.make("CarRacing-v3", **make_kwargs)
 
     if cfg.grayscale:
         env = GrayscaleObservation(env, keep_dim=False)

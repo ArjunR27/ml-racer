@@ -49,6 +49,14 @@ def _select_eval_action(agent, obs):
     return action
 
 
+def _track_progress(env) -> tuple[int | None, int | None]:
+    base_env = env.unwrapped
+    visited = getattr(base_env, "tile_visited_count", None)
+    track = getattr(base_env, "track", None)
+    total = len(track) if track is not None else None
+    return visited, total
+
+
 def _configs_for_checkpoint(checkpoint_path: str, agent_type: str):
     if agent_type == "ppo":
         return ppo_env_cfg, ppo_train_cfg
@@ -82,7 +90,12 @@ def _configs_for_checkpoint(checkpoint_path: str, agent_type: str):
     return env_cfg, train_cfg
 
 
-def run_agent(checkpoint_path: str, seeds: list[int], render: bool) -> list[float]:
+def run_agent(
+    checkpoint_path: str,
+    seeds: list[int],
+    render: bool,
+    max_steps: int | None,
+) -> list[float]:
     """Load one agent and run it on each seed. Returns list of episode rewards."""
     if render and _PYGAME_AVAILABLE:
         pygame.init()
@@ -91,7 +104,11 @@ def run_agent(checkpoint_path: str, seeds: list[int], render: bool) -> list[floa
         checkpoint_path, agent_type="auto"
     )
     render_mode = "human" if render else None
-    env = make_env(selected_env_cfg, render_mode=render_mode)
+    env = make_env(
+        selected_env_cfg,
+        render_mode=render_mode,
+        max_episode_steps=max_steps,
+    )
     agent = selected_train_cfg.agent(env.observation_space, env.action_space)
     agent.load(checkpoint_path)
 
@@ -102,6 +119,8 @@ def run_agent(checkpoint_path: str, seeds: list[int], render: bool) -> list[floa
         obs, _ = env.reset(seed=seed)
         episode_reward = 0.0
         steps = 0
+        end_reason = "unknown"
+        final_info = {}
 
         while True:
             if clock is not None:
@@ -111,24 +130,46 @@ def run_agent(checkpoint_path: str, seeds: list[int], render: bool) -> list[floa
                         return rewards
 
             action = _select_eval_action(agent, obs)
-            obs, reward, terminated, truncated, _ = env.step(action)
+            obs, reward, terminated, truncated, info = env.step(action)
+            final_info = info
             episode_reward += reward
             steps += 1
 
             if clock is not None:
                 clock.tick(60)
 
-            if terminated or truncated:
+            if terminated:
+                end_reason = "terminated"
+                break
+            if truncated:
+                end_reason = "time_limit"
                 break
 
         rewards.append(episode_reward)
-        print(f"  ep {ep:>3} (seed {seed}) | steps {steps:>4} | reward {episode_reward:>8.2f}")
+        visited, total = _track_progress(env)
+        progress = (
+            f"{visited}/{total} tiles ({visited / total:.1%})"
+            if visited is not None and total
+            else "unknown"
+        )
+        lap_finished = final_info.get("lap_finished", False)
+        print(
+            f"  ep {ep:>3} (seed {seed}) | steps {steps:>4} | "
+            f"reward {episode_reward:>8.2f} | ended: {end_reason} | "
+            f"lap_finished: {lap_finished} | progress: {progress}"
+        )
 
     env.close()
     return rewards
 
 
-def compare(checkpoints: list[str], num_episodes: int, render: bool, seed: int | None) -> None:
+def compare(
+    checkpoints: list[str],
+    num_episodes: int,
+    render: bool,
+    seed: int | None,
+    max_steps: int | None,
+) -> None:
     # Fixed seed mode: one episode on one track, no variance expected
     if seed is not None:
         seeds = [seed]
@@ -149,7 +190,7 @@ def compare(checkpoints: list[str], num_episodes: int, render: bool, seed: int |
         print(f"  {label}")
         print(f"{'='*55}")
 
-        rewards = run_agent(path, seeds, render)
+        rewards = run_agent(path, seeds, render, max_steps)
         all_results[label] = rewards
 
     if seed is not None:
@@ -208,6 +249,7 @@ if __name__ == "__main__":
     parser.add_argument("checkpoints", nargs="+",  help="Paths to checkpoint files")
     parser.add_argument("--episodes",  type=int,   default=10,   help="Episodes per agent, ignored if --seed is set (default: 10)")
     parser.add_argument("--seed",      type=int,   default=None, help="Pin a single track seed — runs once per agent, no variance")
+    parser.add_argument("--max-steps", type=int,   default=None, help="Override CarRacing's episode time limit")
     parser.add_argument("--no-render", action="store_true",      help="Disable the pygame window")
     args = parser.parse_args()
 
@@ -216,4 +258,5 @@ if __name__ == "__main__":
         num_episodes=args.episodes,
         render=not args.no_render,
         seed=args.seed,
+        max_steps=args.max_steps,
     )
