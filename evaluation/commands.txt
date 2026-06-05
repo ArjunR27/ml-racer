@@ -1,0 +1,8 @@
+
+# Running evaluation 
+    ## checkpoints/*.pt can be used to run it on all agents
+python evaluation/evaluate_agents.py checkpoints/DoubleDQN_best.pt --episodes 20 --csv evaluation/results.csv
+
+
+# Running plotting
+python evaluation/plot_results.py evaluation/results.csv --out evaluation/graphs
