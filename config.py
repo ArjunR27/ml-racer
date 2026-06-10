@@ -1,9 +1,15 @@
 from dataclasses import dataclass
+from typing import Sequence
 from agents.base_agent import BaseAgent
 from agents.random_agent import RandomAgent
 from agents.dqn_agent import DQNAgent
-from agents.double_dqn_agent import DoubleDQNAgent
 from agents.ppo_agent import PPOAgent
+from agents.sac_agent import SACAgent
+
+try:
+    from agents.double_dqn_agent import DoubleDQNAgent
+except ModuleNotFoundError:
+    DoubleDQNAgent = None
 
 
 @dataclass
@@ -23,6 +29,8 @@ class TrainConfig:
     log_interval: int 
     save_interval: int
     checkpoint_dir: str
+    training_seeds: Sequence[int] = (42,)
+    progress_interval_steps: int = 100
     render: bool = False
     render_eval_interval: int = 0  # 0 disables periodic visual evaluations
     render_eval_episodes: int = 1
@@ -41,6 +49,26 @@ ppo_env_cfg = EnvConfig(
 
 ppo_train_cfg = TrainConfig(
     agent = PPOAgent,
+    num_episodes = 10000,
+    max_steps_per_episode = 500,
+    log_interval = 10,
+    save_interval = 100,
+    checkpoint_dir = "checkpoints",
+    render = False,
+    render_eval_interval = 1000,
+    render_eval_episodes = 1,
+)
+
+sac_env_cfg = EnvConfig(
+    continuous = True,
+    grayscale = True,
+    frame_stack = 4,
+    resize = 84,
+    seed = 42,
+)
+
+sac_train_cfg = TrainConfig(
+    agent = SACAgent,
     num_episodes = 10000,
     max_steps_per_episode = 500,
     log_interval = 10,
@@ -95,5 +123,5 @@ double_dqn_train_cfg = TrainConfig(
 # -----------------------------------------------------------------------
 # Active training config. Change these two lines to switch algorithms.
 # -----------------------------------------------------------------------
-env_cfg = double_dqn_env_cfg
-train_cfg = double_dqn_train_cfg
+env_cfg = sac_env_cfg
+train_cfg = sac_train_cfg

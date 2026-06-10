@@ -30,6 +30,24 @@ def _select_eval_action(agent, obs):
     return action
 
 
+def _episode_seed(env_cfg: EnvConfig, train_cfg: TrainConfig, episode: int) -> int | None:
+    if train_cfg.training_seeds:
+        return train_cfg.training_seeds[(episode - 1) % len(train_cfg.training_seeds)]
+    if env_cfg.seed == -1:
+        return None
+    return env_cfg.seed
+
+
+def _agent_buffer_size(agent) -> int | None:
+    buffer = getattr(agent, "buffer", None)
+    if buffer is None:
+        return None
+    try:
+        return len(buffer)
+    except TypeError:
+        return None
+
+
 def _render_evaluation(env_cfg: EnvConfig, train_cfg: TrainConfig, agent, episode: int) -> None:
     if not _PYGAME_AVAILABLE:
         print("Skipping render evaluation because pygame is not installed.")
@@ -41,8 +59,12 @@ def _render_evaluation(env_cfg: EnvConfig, train_cfg: TrainConfig, agent, episod
 
     print(f"\n[render eval] episode {episode} -- watching current {agent.name} policy")
 
-    for eval_ep in range(1, train_cfg.render_eval_episodes + 1):
-        obs, _ = env.reset(seed=env_cfg.seed if env_cfg.seed != -1 else None)
+    eval_seeds = list(train_cfg.training_seeds)
+    if not eval_seeds:
+        eval_seeds = [env_cfg.seed] if env_cfg.seed != -1 else [None]
+
+    for eval_ep, seed in enumerate(eval_seeds, 1):
+        obs, _ = env.reset(seed=seed)
         episode_reward = 0.0
         steps = 0
 
@@ -64,6 +86,7 @@ def _render_evaluation(env_cfg: EnvConfig, train_cfg: TrainConfig, agent, episod
 
         print(
             f"[render eval] eval_ep {eval_ep} | "
+            f"seed {seed} | "
             f"steps {steps} | reward {episode_reward:.2f}"
         )
 
@@ -101,12 +124,15 @@ def train(env_cfg: EnvConfig, train_cfg: TrainConfig) -> None:
     print(f"  obs_space: {env.observation_space}")
     print(f"  action_space: {env.action_space}")
     print(f"  episodes: {train_cfg.num_episodes}")
+    print(f"  training_seeds: {list(train_cfg.training_seeds)}")
+    print(f"  progress_interval_steps: {train_cfg.progress_interval_steps}")
     print(f"{'='*55}\n")
 
     start_time = time.time()
 
     for episode in range(1, train_cfg.num_episodes + 1):
-        obs, _ = env.reset(seed=env_cfg.seed if env_cfg.seed != -1 else None)
+        seed = _episode_seed(env_cfg, train_cfg, episode)
+        obs, _ = env.reset(seed=seed)
         episode_reward = 0.0
         episode_steps = 0
         episode_metrics: dict[str, list] = {}
@@ -142,6 +168,18 @@ def train(env_cfg: EnvConfig, train_cfg: TrainConfig) -> None:
             episode_reward += reward
             episode_steps += 1
 
+            if (
+                train_cfg.progress_interval_steps > 0
+                and episode_steps % train_cfg.progress_interval_steps == 0
+            ):
+                buffer_size = _agent_buffer_size(agent)
+                buffer_str = f" | buffer {buffer_size}" if buffer_size is not None else ""
+                print(
+                    f"[progress] ep {episode} | seed {seed} | "
+                    f"step {episode_steps}/{train_cfg.max_steps_per_episode} | "
+                    f"reward {episode_reward:.2f}{buffer_str}"
+                )
+
             if clock is not None:
                 clock.tick(60)
 
@@ -159,6 +197,7 @@ def train(env_cfg: EnvConfig, train_cfg: TrainConfig) -> None:
             )
             print(
                 f"ep {episode:>6} | "
+                f"seed {seed} | "
                 f"steps {episode_steps:>4} | "
                 f"reward {episode_reward:>8.2f} | "
                 f"avg({train_cfg.log_interval}) {avg_reward:>8.2f} | "

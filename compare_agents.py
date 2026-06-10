@@ -22,6 +22,8 @@ from config import (
     env_cfg,
     ppo_env_cfg,
     ppo_train_cfg,
+    sac_env_cfg,
+    sac_train_cfg,
     train_cfg,
 )
 from env_setup import make_env
@@ -64,12 +66,16 @@ def _configs_for_checkpoint(checkpoint_path: str, agent_type: str):
         return double_dqn_env_cfg, double_dqn_train_cfg
     if agent_type == "dqn":
         return dqn_env_cfg, dqn_train_cfg
+    if agent_type == "sac":
+        return sac_env_cfg, sac_train_cfg
 
     basename = os.path.basename(checkpoint_path).lower()
 
     try:
         ckpt = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
     except Exception:
+        if basename.startswith("sac"):
+            return sac_env_cfg, sac_train_cfg
         if basename.startswith("ppo"):
             return ppo_env_cfg, ppo_train_cfg
         if basename.startswith("doubledqn") or basename.startswith("double_dqn"):
@@ -80,8 +86,12 @@ def _configs_for_checkpoint(checkpoint_path: str, agent_type: str):
 
     if ckpt.get("agent_name") == "DoubleDQN":
         return double_dqn_env_cfg, double_dqn_train_cfg
+    if ckpt.get("agent_name") == "SAC":
+        return sac_env_cfg, sac_train_cfg
     if "ac" in ckpt:
         return ppo_env_cfg, ppo_train_cfg
+    if basename.startswith("sac"):
+        return sac_env_cfg, sac_train_cfg
     if basename.startswith("doubledqn") or basename.startswith("double_dqn"):
         return double_dqn_env_cfg, double_dqn_train_cfg
     if "q_net" in ckpt:
@@ -175,8 +185,12 @@ def compare(
         seeds = [seed]
         print(f"Fixed seed mode: all agents play seed {seed} once.")
     else:
-        rng = np.random.default_rng(seed=0)
-        seeds = rng.integers(0, 100_000, size=num_episodes).tolist()
+        if train_cfg.training_seeds:
+            seeds = list(train_cfg.training_seeds)
+        else:
+            rng = np.random.default_rng(seed=0)
+            seeds = rng.integers(0, 100_000, size=num_episodes).tolist()
+        print(f"Evaluation seeds: {seeds}")
 
     all_results: dict[str, list[float]] = {}
 
