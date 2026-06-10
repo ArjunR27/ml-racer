@@ -137,7 +137,7 @@ class DQNAgent(BaseAgent):
         obs_space: spaces.Space,
         action_space: spaces.Space,
         lr: float            = 1e-4,
-        gamma: float         = 0.99,
+        u: float         = 0.99,
         epsilon_start: float = 1.0,
         epsilon_min: float   = 0.05,
         epsilon_decay: float = 0.9999,

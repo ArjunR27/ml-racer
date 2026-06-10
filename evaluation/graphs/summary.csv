@@ -1,2 +1,0 @@
-checkpoint,finish_rate,avg_progress,avg_reward,avg_steps,episodes
-DoubleDQN_best.pt,0.0,8.79487665,-45.79123285,338.4,20

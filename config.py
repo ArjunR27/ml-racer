@@ -61,13 +61,13 @@ dqn_env_cfg = EnvConfig(
 
 dqn_train_cfg = TrainConfig(
     agent = DQNAgent,
-    num_episodes = 10000,
+    num_episodes = 5000,
     max_steps_per_episode = 500,
     log_interval = 10,
-    save_interval = 100,
+    save_interval = 10000,
     checkpoint_dir = "checkpoints",
     render = False,
-    render_eval_interval = 1000,
+    render_eval_interval = 0,
     render_eval_episodes = 1,
 )
 
@@ -81,13 +81,33 @@ double_dqn_env_cfg = EnvConfig(
 
 double_dqn_train_cfg = TrainConfig(
     agent = DoubleDQNAgent,
-    num_episodes = 10000,
+    num_episodes = 5116,
     max_steps_per_episode = 500,
     log_interval = 10,
     save_interval = 10000,
     checkpoint_dir = "checkpoints",
     render = False,
-    render_eval_interval = 1000,
+    render_eval_interval = 0,
+    render_eval_episodes = 1,
+)
+
+random_env_cfg = EnvConfig(
+    continuous = False,
+    grayscale = False,
+    frame_stack = 1,
+    resize = 96,
+    seed = 42,
+)
+
+random_train_cfg = TrainConfig(
+    agent = RandomAgent,
+    num_episodes = 10,
+    max_steps_per_episode = 500,
+    log_interval = 1,
+    save_interval = 10000,
+    checkpoint_dir = "checkpoints",
+    render = True,
+    render_eval_interval = 0,
     render_eval_episodes = 1,
 )
 
@@ -95,5 +115,5 @@ double_dqn_train_cfg = TrainConfig(
 # -----------------------------------------------------------------------
 # Active training config. Change these two lines to switch algorithms.
 # -----------------------------------------------------------------------
-env_cfg = double_dqn_env_cfg
-train_cfg = double_dqn_train_cfg
+env_cfg = dqn_env_cfg
+train_cfg = dqn_train_cfg
