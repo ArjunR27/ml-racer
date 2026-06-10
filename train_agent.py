@@ -1,3 +1,4 @@
+import csv
 import os
 import time
 from collections import deque
@@ -12,6 +13,62 @@ try:
     _PYGAME_AVAILABLE = True
 except ImportError:
     _PYGAME_AVAILABLE = False
+
+
+NO_PROGRESS_LIMIT = 120
+TRAINING_LOG_DIR = "training_logs"
+TRAINING_LOG_FIELDS = [
+    "episode",
+    "agent",
+    "seed",
+    "reward",
+    "avg_reward",
+    "steps",
+    "lap_finished",
+    "visited_tiles",
+    "total_tiles",
+    "progress_percent",
+    "avg_progress_percent",
+    "end_reason",
+    "elapsed_seconds",
+    "loss",
+    "epsilon",
+    "pg_loss",
+    "vf_loss",
+    "entropy",
+]
+
+
+def _track_progress(env) -> tuple[int, int]:
+    base_env = env.unwrapped
+    visited = getattr(base_env, "tile_visited_count", 0)
+    track = getattr(base_env, "track", None)
+    total = len(track) if track is not None else 0
+    return int(visited), int(total)
+
+
+def _progress_fraction(visited: int, total: int) -> float:
+    return visited / total if total else 0.0
+
+
+def _progress_text(visited: int, total: int) -> str:
+    if not total:
+        return "unknown"
+    return f"{visited}/{total} ({_progress_fraction(visited, total):.1%})"
+
+
+def _training_log_path(agent_name: str, seed_text: str) -> str:
+    safe_seed = seed_text.replace(os.sep, "_")
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    return os.path.join(TRAINING_LOG_DIR, f"{agent_name}_seed_{safe_seed}_{timestamp}.csv")
+
+
+def _mean_metrics(episode_metrics: dict[str, list]) -> dict[str, float]:
+    return {
+        key: float(np.mean(values))
+        for key, values in episode_metrics.items()
+        if values
+    }
 
 
 def _select_eval_action(agent, obs):
@@ -116,7 +173,12 @@ def train(env_cfg: EnvConfig, train_cfg: TrainConfig) -> None:
     os.makedirs(train_cfg.checkpoint_dir, exist_ok=True)
 
     reward_window = deque(maxlen=train_cfg.log_interval)
+    progress_window = deque(maxlen=train_cfg.log_interval)
     best_avg_reward = float("-inf")
+    training_seed = env_cfg.seed if env_cfg.seed != -1 else None
+    seed_text = "random" if training_seed is None else str(training_seed)
+    training_log_path = _training_log_path(agent.name, seed_text)
+    os.makedirs(TRAINING_LOG_DIR, exist_ok=True)
 
     print(f"\n{'='*55}")
     print(f"  Training started")
@@ -230,6 +292,7 @@ def train(env_cfg: EnvConfig, train_cfg: TrainConfig) -> None:
     env.close()
     total_time = time.time() - start_time
     print(f"\nTraining complete in {total_time:.1f}s")
+    print(f"Training log saved to {training_log_path}")
 
 
 if __name__ == "__main__":
