@@ -35,6 +35,7 @@ REQUIRED_COLUMNS = {
     "avg_progress_percent",
     "steps",
     "end_reason",
+    "elapsed_seconds",
 }
 
 
@@ -73,6 +74,7 @@ def _load_log(path: Path) -> pd.DataFrame:
         "progress_percent",
         "avg_progress_percent",
         "steps",
+        "elapsed_seconds",
     ]
     for column in numeric_columns:
         df[column] = pd.to_numeric(df[column], errors="coerce")
@@ -264,6 +266,76 @@ def _save_individual_end_reason_plots(df: pd.DataFrame, output_dir: Path) -> Non
         plt.close()
 
 
+def _training_time_by_agent(df: pd.DataFrame) -> pd.DataFrame:
+    run_times = (
+        df.groupby(["agent", "source_log"], as_index=False)
+        .agg(
+            elapsed_seconds=("elapsed_seconds", "max"),
+            episodes=("episode", "count"),
+        )
+    )
+    return (
+        run_times.groupby("agent", as_index=False)
+        .agg(
+            total_training_seconds=("elapsed_seconds", "sum"),
+            runs=("source_log", "nunique"),
+        )
+        .merge(
+            run_times.groupby("agent", as_index=False)["episodes"].sum(),
+            on="agent",
+        )
+        .assign(
+            training_hours=lambda data: data["total_training_seconds"] / 3600,
+            avg_seconds_per_episode=lambda data: (
+                data["total_training_seconds"] / data["episodes"].clip(lower=1)
+            ),
+        )
+        .sort_values("agent")
+    )
+
+
+def _format_duration(seconds: float) -> str:
+    if seconds >= 3600:
+        return f"{seconds / 3600:.1f}h"
+    if seconds >= 60:
+        return f"{seconds / 60:.1f}m"
+    return f"{seconds:.0f}s"
+
+
+def _save_training_time_plot(df: pd.DataFrame, output_path: Path) -> None:
+    times = _training_time_by_agent(df)
+
+    plt.figure(figsize=(9.5, 5.5))
+    ax = sns.barplot(
+        data=times,
+        x="agent",
+        y="training_hours",
+        hue="agent",
+        palette="deep",
+        legend=False,
+        width=0.55,
+    )
+    ax.set_title("Total Training Time by Agent")
+    ax.set_xlabel("Agent")
+    ax.set_ylabel("Training time (hours)")
+
+    for patch, seconds in zip(ax.patches, times["total_training_seconds"]):
+        ax.annotate(
+            _format_duration(float(seconds)),
+            (patch.get_x() + patch.get_width() / 2, patch.get_height()),
+            ha="center",
+            va="bottom",
+            xytext=(0, 5),
+            textcoords="offset points",
+        )
+
+    y_max = times["training_hours"].max()
+    ax.set_ylim(0, y_max * 1.15 if y_max > 0 else 1)
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=180)
+    plt.close()
+
+
 def _write_summary(df: pd.DataFrame, output_path: Path, window: int) -> None:
     summary = (
         df.groupby("agent", as_index=False)
@@ -279,6 +351,10 @@ def _write_summary(df: pd.DataFrame, output_path: Path, window: int) -> None:
         )
         .sort_values("agent")
     )
+    training_times = _training_time_by_agent(df)[
+        ["agent", "total_training_seconds", "avg_seconds_per_episode"]
+    ]
+    summary = summary.merge(training_times, on="agent", how="left")
     summary.insert(1, "smoothing_window", window)
     summary.to_csv(output_path, index=False)
 
@@ -330,6 +406,7 @@ def create_training_graphs(
     )
     _save_end_reason_plot(df, out / "training_end_reasons.png")
     _save_individual_end_reason_plots(df, out)
+    _save_training_time_plot(df, out / "training_time.png")
     _write_summary(df, out / "training_summary.csv", window)
 
     print(f"Wrote training graphs and summary to: {out}")
